@@ -1,0 +1,1258 @@
+#!/usr/bin/perl
+#
+# Linux tool to display files opened by processes.
+# copyright 2011-2013 - Martijn van der Kwast <martijn@vdkwast.com>
+#
+# Depends on the /proc system and a kernel >= 2.6.22
+#
+# CHANGES
+# 0.0.18 20110228	+ Added --with[out]-proc-tags option.
+# 		        + Fixed: error if size of deleted file is displayed
+# 0.0.19 20110228       + Added --show-link, --fields options k to display link name in /proc.
+# 
+# 0.0.20 20111218       + Fixed: command name detection, handle /proc/$pid/cmdline is empty.
+# 0.0.21 20130214       + Prepared for sharing on github
+
+=head1 NAME
+
+of - List open files.
+
+=head1 SYNOPSIS
+
+    $of vim
+    10059 vim.gnome /home/stilgar/bin/.of.swp
+
+    $of --fields f evolution | grep "\.db$" | sort | uniq
+    /home/me/.evolution/mail/imap/my@mail.com/folders.db
+    /home/me/.evolution/mail/imap/more@mail.com@provider.net/folders.db
+    /home/me/.evolution/mail/local/folders.db
+    /home/me/.evolution/mail/vfolder/folders.db
+    /home/me/.pki/nssdb/cert9.db
+    /home/me/.pki/nssdb/key4.db
+
+    $of --type p --children --show-fd ogmrip
+    ...
+    2054 ogmrip 19 pipe:[15582]
+    2054 ogmrip 20 pipe:[15582]
+    2054 ogmrip 23 pipe:[912459]
+    2054 ogmrip 25 pipe:[912460]
+    16132 mencoder 1 pipe:[912459]
+    16132 mencoder 2 pipe:[912460]
+    $cat /proc/2054/23
+    Pos: 216.6s   5415f (45%) 31.04fps Trem:   3min  45mb  A-V:0.000 [803:0]
+
+    $export OF_RC=$'--unit h --fields pndlhsf 
+    --format "%5d %-15.15s %3d [%-3s] %-7s %-7s %s\n"'
+    $of gnome-session -c
+    ...
+    1670 gnome-panel       2 [RW+] 2.0K    2.0K    /home/stilgar/.xsession-e\
+    rrors
+    1678 nautilus          1 [RW+] 2.0K    2.0K    /home/stilgar/.xsession-e\
+    rrors
+    1678 nautilus          2 [RW+] 2.0K    2.0K    /home/stilgar/.xsession-e\
+    rrors
+    ...
+
+    $of -c firefox-bin --deleted-only --fields f --without-proc-tags
+    /tmp/FlashXXlQ6no
+    $of -c firefox-bin --deleted-only -f hk --unit m -O "Buffered %s Megabytes of %s"
+    Buffered 117.4 Megabytes of /proc/4110/fd/64
+    $of -c firefox-bin --deleted-only -f k -0 | xargs -0 mplayer
+    ...
+
+=head1 DESCRIPTION
+
+This script lists which file descriptors are opened by running processes and can display information about them.
+
+=head1 SELECTING PROCESSES
+
+=head2 Process Matching
+
+Any number of process names can be provided as arguments. If no process name is specified, B<of> will use all the processes belonging to the current user.
+
+The specified process names are matched against F</proc/pid/cmdline>, F</proc/pid/exe> and F</proc/pid/status>.
+
+At this time B<of> only shows descriptors that are opened by the user calling the command. Future versions will allow users with root privileges to use it on other users.
+
+=head2 Options
+
+=over
+
+=item
+B<--children>, B<-c>
+
+Recurse into the selected processes' descendance.
+
+=item
+B<--ignore-case>, B<-i>
+
+Ignore case in matching algorithm.
+
+=item
+B<--match-start>, B<-s>
+
+Match incomplete process name (ie. C<fire> matches C<firefox>)
+
+=item
+B<--smart-match>, B<-m>
+      
+Match the script file instead of interpreter for known script languages.
+
+=back
+
+
+=head1 SELECTING DESCRIPTORS
+
+A few options are provided to select which descriptors to display. By default only directories and regular files are be displayed.
+
+=over
+
+=item B<--types>, B<-t> [dfvpsxoDFVPSXO]
+
+Select which descriptors types to display (directories, regular files, devices, pipes, sockets, deleted, other special)
+
+=item B<--include>, B<-n> [dfvpsxo]
+
+Include these descriptor types. See B<--types> for the meaning of the arguments.
+
+=item B<--exclude>, B<-x> [dfvpsxo]
+
+Include or exclude file types. See B<--types> for the meaning of the arguments.
+
+=item B<--include-all>, B<-a>
+
+Display descriptors of any type.
+
+=item B<--deleted-only>
+
+Only display deleted entries. Implies B<--include x>.
+
+=item B<--[no-]include-directories>
+
+=item B<--[no-]include-regular>
+
+=item B<--[no-]include-devices>
+
+=item B<--[no-]include-pipes>
+
+=item B<--[no-]include-sockets>
+
+=item B<--[no-]include-deleted>
+
+=item B<--[no-]include-other>
+
+Select which descriptor types to display.
+
+=back
+
+
+=head1 OUTPUT FORMAT
+
+=head2 Fields
+
+Fields are displayed in command-line order.
+
+=over
+
+=item B<--[no-]show-pid>
+
+=item B<--[no-]show-process>
+
+=item B<--[no-]show-fd>
+
+=item B<--[no-]show-flags>
+
+=item B<--[no-]show-extra-flags>
+
+=item B<--[no-]show-pos>
+
+=item B<--[no-]show-size>
+
+=item B<--[no-]show-type>
+
+=item B<--[no-]show-link>
+
+Enable/disable fields to display.
+
+=item B<--show-all>
+
+Display all fields except the link in /proc.
+
+=item B<--fields>, B<-f> [pndlxfhsk]
+
+Choose which fields to display (pid, process name, fd, flags, extra flags, filename, seek position, size, link in /proc).
+
+=back
+
+
+=head2 Formatting
+
+=over
+
+=item B<--unit [bkmh]>
+
+Unit to use for sizes (bytes, kilobytes, megabytes, human)
+
+=item B<--[no-]escape>
+
+Shell escape filenames.
+
+=item B<--[no-]basename>
+
+Display basename instead of full filename.
+
+=item B<--with-proc-tags>
+=item B<--without-proc-tags>
+
+Deleted files have I<(deleted)> appended to their names by the F</proc> filesystem. By default this will be displayed as is. Use C<--without-proc-tags> to display the bare filename only. You will not be able to tell the difference between regular and deleted files any longer.
+
+=item B<--format>, B<-o> format_string
+
+sprintf style format string to display files. The "%" placeholders must match the selected fields (`--fields`) in number and in order.
+
+=item B<--formatln>, B<-O> format_string
+
+like --format, but appends a newline.
+
+=item B<--null|0>
+
+End lines with nul character instead of a newline. This is useful in combination with `xargs -0` to safely iterate over filenames that may contain weird characters.
+
+=back
+
+=head1 OTHER INFORMATION
+
+=over
+
+=item B<--help>, B<-h>
+
+Display a useful help message.
+
+=item B<--version>, B<V>
+
+Display the current version and quit.
+
+=back
+
+=head1 ENVIRONMENT
+
+    $export DU=--format "%5d %-25s %s" --fields pnf
+
+=head1 BUGS
+
+Hit me!
+
+=head1 IDEAS
+
+=over
+
+=item * custom sort
+
+=item * make output lines unique. useful with -f f -0 to get a nul separated list
+   of open files.
+
+=item * --format option is weird, it should not use the specified fields and their
+   order but allow a syntax like --format="%{pid}-3d %{process}s, and autoselect
+   the fields that are needed.
+
+=item * allow to select processes belong to other user for system maintenance.
+
+=item * display header
+
+=item * display more pertinent info about sockets
+
+=item * better detection of script files
+
+=item * be smarter about the display process name, try
+
+=item * to match the launched command rather than the canonical name.
+   ie. gvim instead of vim.gnome
+
+=item * add option to specify which process name matching method(s) are used.
+
+=item * filter: show only files open for reading / writing
+
+=back
+
+=head1 AUTHOR
+
+This module by Martijn van der Kwast <martijn@vdkwast.com>.
+
+=head1 COPYRIGHT
+
+This module is copyright (c) 2011-2013 Martijn van der Kwast <martijn@vdkwast.com>. All rights reserved.
+
+This script is free software; you may redistribute and/or modify it under the same terms as Perl itself.
+
+=cut
+
+use strict;
+use warnings;
+
+use Fcntl;
+use Getopt::Long qw/GetOptionsFromString/;
+Getopt::Long::Configure('bundling', 'auto_version');
+
+our $VERSION = '0.0.21';
+
+use constant ENV_VAR => 'OF_RC';# Name of environment variable that holds program defaults
+
+# command line options
+my $recurse_into_processes = 0;	# select processes and their children
+my $ignore_case = 1;		# ignore case in matching process name
+my $match_start = 0;		# match incomplete name (ie. pe matches perl)
+my $smart_match = 0;		# match script instead of interpreter
+my $use_pid;			# select process that has this pid instead of by name
+
+my $include_directories = 1;
+my $include_regular = 1;
+my $include_devices = 0;
+my $include_pipes = 0;
+my $include_sockets = 0;
+my $include_deleted = 0;	# references to files that are already deleted
+my $include_other = 0;		# special files that are not devices, pipes, etc
+
+my $deleted_only = 0;		# only display deleted entries
+
+my $show_pid = 1;		# display process pid
+my $show_process = 1;		# display process name
+my $show_fd = 0;		# display file descriptor number
+my $show_file = 1;		# display filename
+my $show_flags = 0;		# display /RW+ flags
+my $show_extra_flags = 0;	# display nonblock, sync, direct, largefile, nofollow 
+my $show_pos = 0;		# display seek position
+my $show_size = 0;		# display file size
+my $show_type = 0;		# display file type
+my $show_link = 0;		# display link in /proc system rather than filename 
+				# pointed to.
+
+my $field_order = 'pndlxtfhsk';	# field order in output
+
+my $display_unit = 'b';		# unit to use for sizes (bkmh)
+my $display_basename = 0;	# display basename instead of full path
+my $display_escaped = 0;	# shell escape filenames 
+my $display_format = '';	# custom output format
+my $display_nul = 0;		# end string with nul instead of newline
+my $display_proc_tags = 1;	# /proc system adds (deleted) after filename
+				# for deleted files. Hide this through this option.
+
+# link command line filetype codes to option variables
+my %filetype_codes = (
+    'd' => \$include_directories,
+    'f' => \$include_regular,
+    'v' => \$include_devices,
+    'p' => \$include_pipes,
+    's' => \$include_sockets,
+    'x' => \$include_deleted,
+    'o' => \$include_other,
+);
+
+# line command line field type codes t option variables
+my %field_codes = (
+    'p' => \$show_pid,
+    'n' => \$show_process,
+    'd' => \$show_fd,
+    'l' => \$show_flags,
+    'x' => \$show_extra_flags,
+    'f' => \$show_file,
+    'h' => \$show_pos,
+    's' => \$show_size,
+    't' => \$show_type,
+    'k' => \$show_link,
+);
+
+# List of known interpreters. If a process name matches on of those, also
+# try to match the process on a scriptname in its command-line.
+# eg. 
+#   $ps xh -C python | grep python
+#   7129 stilgar python foo.py
+#   $of -c foo.py
+#   7129 python2.7 /tmp/data.log
+
+my @interpreters = qw/
+    bash
+    lua
+    perl
+    python
+    sh
+    tcl
+    tcsh
+/;
+
+sub abort_with_help {
+    print <<HELP;
+Syntax: of [-c] {process_name}
+If no process name is specified, display open files from
+all processes. More info can be found with "perldoc of"
+Options:
+    --children, -c
+	Include children of selected processes
+    --ignore-case, -i
+	Ignore case in process names
+    --match-start, -s
+	Match incomplete process name (ie. fire matches firefox)
+    --smart-match, -m
+	Match script file instead of interpreter for known
+	script languages.
+    --types, -t [dfvpsxoDFVPSXO]
+	Set file types to display (directories, regular files, devices,
+	pipes, sockets, deleted, other special)
+    --include, -n [dfvpsxo]
+    --exclude, -x [dfvpsxo]
+	Include or exclude file types.
+    --include-all, -a
+	Display all file types.
+    --deleted-only
+	Only display deleted entries. Implies -n x.
+    --[no-]include-directories (default=yes)
+    --[no-]include-regular (default=yes)
+    --[no-]include-devices (default=no)
+    --[no-]include-pipes (default=no)
+    --[no-]include-sockets (default=no)
+    --[no-]include-deleted (default=no)
+    --[no-]include-other (default=no)
+        Choose which files types to display.
+    --[no-]show-pid (default=yes)
+    --[no-]show-process (default=yes)
+    --[no-]show-fd (default=no)
+    --[no-]show-flags (default=no)
+    --[no-]show-extra-flags (default=no)
+    --[no-]show-pos (default=no)
+    --[no-]show-size (default=no)
+    --[no-]show-type (default=no)
+    --[no-]show-link (default=no)
+	Enable/disable fields to display.
+    --show-all
+	Display all fields except the link.
+    --fields, -f [pndlxfhsk]
+	Choose which fields to display (pid, process name, fd, flags,
+	extra flags, filename, seek position, size, link in /proc)
+    --unit [bkmh]
+	Unit to use for sizes (bytes, kilobytes, megabytes, human)
+    --[no-]escape
+	Shell escape filenames.
+    --[no-]basename
+	Display basename instead of full filename.
+    --with[out]-proc-tags
+        Remove (deleted) from deleted filenames.
+    --format,-o format_string
+	sprintf style format string to display files. 
+    --formatln, -O format_string
+        like --format, but appends a newline.
+    --null|0' 
+	end lines with nul character instead of a newline.
+    --help, -h, -?
+	Display this help message and quit
+    --version
+	Display version and quit
+HELP
+    exit -1;
+}
+
+# get uid for user calling this script
+sub get_uid() {
+    my $login = getlogin();
+    (getpwnam($login))[2];
+}
+
+# escape dangerous characters
+sub shell_escape($) {
+    my $name = shift;
+    $name =~ s/([ ;<>\*\|`&\$!#\(\)\[\]\{\}:'"])/\\$1/g;
+    return $name;
+}
+
+#
+# FILE INFO
+#
+
+# retrieve file owner uid
+sub get_file_owner($) {
+    my $fn = shift;
+    (stat($fn))[4];
+}
+
+# get file pos and flags info from /proc/$pid/fdinfo/$fid
+sub get_file_info($$) {
+    my ($pid, $fid) = @_;
+    my $pos = 0;
+    my $flags = 0;
+    my $flags_str = '';
+
+    my $fh;
+    unless (open $fh, "<", "/proc/$pid/fdinfo/$fid") {
+	return ($pos, $flags_str);
+    }
+
+    for my $line (<$fh>) {
+	if ($line =~ /^pos:\s*(\d+)/) {
+	    $pos = $1;
+	    next;
+	}
+	elsif( $line =~ /^flags:\s(\d+)/) {
+	    $flags = oct $1;
+	    next;
+	}
+    }
+
+    return ($pos, $flags);
+}
+
+#
+# PROCESS SELECTION
+#
+
+# exits with error message if pid doesn't exist or doesn't belong 
+# to current user.
+sub check_pid($) {
+    my $pid = shift;
+    my $fn = "/proc/$pid";
+    unless (-d $fn) {
+	print STDERR "No process found with pid $pid\n";
+	exit -2;
+    }
+
+    unless (get_uid() == get_file_owner($fn)) {
+	print STDERR "Not your process.\n";
+	exit -2;
+    }
+    
+    1;
+}
+
+# get pid of user's process pids using /proc
+# The race condition that occurs if a process dies between the moment it 
+# is found in /proc and stat is killed is not an issue since in that case
+# the file owned uid will be empty and won't match the user's uid.
+sub get_user_processes($) {
+    my $uid = shift;
+
+    chdir '/proc';
+    my @pids = <[0-9]*>;
+
+    return grep { get_file_owner($_) == $uid } @pids;
+}
+
+# return true iff the process name matches the query
+sub process_name_matches($$) {
+    my ($pn, $query) = @_;
+    $query = lc $query if $ignore_case;
+
+    return $match_start
+	? substr($pn, 0, length($query)) eq $query
+	: $pn eq $query;
+}
+
+# return true iff process name matches one of the specified names
+sub process_name_compare($$) {
+    my ($pn, $queries) = @_;
+    $pn = lc $pn if $ignore_case;
+
+    for my $query (@$queries) {
+	return 1 if (process_name_matches($pn, $query));
+    }
+
+    return 0;
+}
+
+# filter pid list with using process name
+sub get_matching_processes(\@\@) {
+    my ($pids, $names) = @_;
+    my @selected;
+
+    for my $pid ( @$pids ) {
+	my $pns = get_process_matchable($pid);
+	for my $pn (@$pns) {
+	    if (process_name_compare($pn, $names)) {
+		push @selected, $pid;
+		last;
+	    }
+	}
+    } 
+
+    return @selected;
+}
+
+# get pid of a process' parent using /proc/pid/status, cache result
+BEGIN {
+    my %_ppid_cache = ();
+
+    sub get_ppid($) {
+	my $pid = shift;
+	my $ppid = 0;
+	return $_ppid_cache{$pid} if exists $_ppid_cache{$pid};
+
+	my $fh;
+	unless (open $fh, '<', "/proc/$pid/status") {
+	    $_ppid_cache{$pid} = $ppid;
+	    return $ppid;
+	}
+
+	while (my $line = <$fh>) {
+	    next unless $line =~ /^PPid:\s(\d+)/;
+	    $ppid = $1;
+	    last;
+	}
+
+	$_ppid_cache{$pid} = $ppid;
+	return $ppid;
+    }
+}
+
+# get pids of all processes that have the specified one as ancestor
+sub get_process_descendants($\@) {
+    my ($pid, $all_pids) = @_;
+
+    my %all_descendants = ( $pid => 1);
+    my $count;
+
+    do {
+	$count = 0;
+	for my $cpid (@$all_pids) {
+	    next if exists $all_descendants{$cpid};
+
+	    my $ppid = get_ppid( $cpid );
+	    if (exists $all_descendants{$ppid}) { 
+		$all_descendants{$cpid} = 1;
+		$count++;
+	    }
+	}
+    } while ($count > 0);
+
+    delete $all_descendants{$pid};
+    return keys %all_descendants;
+}
+
+# return true iff name looks like an interpreter
+sub looks_like_an_interpreter($) {
+    my $pn = shift;
+    for my $interpreter (@interpreters) {
+	if ($pn =~ /$interpreter(-?\d+(\.\d+)*)?/i) {
+	    return 1;
+	}
+    }
+    0;
+}
+
+# retrieve a process name from /proc/<pid>/exe, /proc/cmdline
+# or /proc/status (and cache result)
+BEGIN {
+    my %_process_names_cache;
+    my %_process_matchable_cache;
+
+    sub get_process_name($) {
+	my $pid = shift;
+	return $_process_names_cache{$pid} 
+	    if exists $_process_names_cache{$pid};
+
+	my $process_name;
+	my @names;
+
+	# 1. try /proc/pid/cmdline first because we
+	#    might extract script arguments from there
+	if (open my $fh, '<', "/proc/$pid/cmdline") {
+	    my $line = <$fh>;
+	    if (defined $line) {
+		chomp $line;
+		my @pieces = split /\0/, $line;
+		(my $name = $pieces[0]) =~ s|.*/||;
+		if (-e $pieces[0]) {
+		    $process_name = $name;
+		    push @names, $process_name;
+		}
+
+		# FIXME: crappy way to find script file. Could be improved
+		# by checking the interpreter's pwd and checking which
+		# args are existing files, and/or by testing file extensions,
+		# but it will never be foolproof.
+		if (looks_like_an_interpreter($name)) {
+		    for (my $i=1; $i<@pieces; ++$i) {
+			next if $pieces[$i] =~ /^-/;
+			$pieces[$i] =~ s|.*/||;
+			push @names, $pieces[$i];
+			last;
+		    }
+		}
+	    }
+	}
+
+	# 2. try /proc/pid/exe next because it should
+	#    be pretty reliable, but might be inaccessible
+	#    in some cases, also it can be another name than
+	#    than the process if it was symlinked.
+	my $exe = readlink "/proc/$pid/exe";
+	if (defined $exe) {
+	    (my $name = $exe) =~ s|.*/||;
+	    $process_name = $name unless defined $process_name;
+	    push @names, $name;
+	}
+
+	# 3. try /proc/pid/status which provides a truncated
+	#    (15 characters max?) command name.
+	if (open my $fh, '<', "/proc/$pid/status") {
+	    my $name;
+	    while (<$fh>) {
+		next unless /^Name:\s*(.*)\n/;
+		$name = $1;
+		last;
+	    }
+	    if (defined $name) {
+		$name =~ s|.*/||;
+		$process_name = $name unless defined $process_name;
+		push @names, $name;
+	    }
+	}
+
+	my %names = map { $_ => 1 } @names;
+	@names = keys %names;
+
+	$_process_names_cache{$pid} = $process_name;
+	$_process_matchable_cache{$pid} = \@names;
+	return $process_name;
+    }
+
+    # remember all names that might be used to identify the process
+    sub get_process_matchable($) {
+	my $pid = shift;
+	unless (exists $_process_names_cache{$pid}) {
+	    get_process_name($pid);
+	}
+	return $_process_matchable_cache{$pid};
+    }
+}
+
+#
+# FORMAT FILE LISTINGS
+#
+
+# format file mode flags 
+sub format_file_flags($) {
+    my $flags = shift;
+    my $flags_str = '';
+    $flags_str .= 'RW' if $flags & O_RDWR;
+    $flags_str .= 'R' if $flags & O_RDONLY;
+    $flags_str .= 'W' if $flags & O_WRONLY;
+    $flags_str .= '+' if $flags & O_APPEND;
+    return $flags_str;
+}
+
+# format extra file mode flags
+sub format_file_extra_flags($) {
+    my $flags = shift;
+    my $flags_str = '';
+    $flags_str .= 'B' if $flags & O_NONBLOCK;
+    $flags_str .= 'S' if $flags & O_SYNC;
+    $flags_str .= 'D' if $flags & O_DIRECT;
+    $flags_str .= 'L' if $flags & O_LARGEFILE;
+    $flags_str .= 'F' if $flags & O_NOFOLLOW;
+    return $flags_str;
+}
+
+# format filename taking display_basename and display_escaped into account
+sub format_file($) {
+    my $fn = shift;
+    if (!$display_proc_tags && !(-f $fn || -d _)) {
+	$fn =~ s/\(deleted\)$//;
+    }
+    if ($display_basename) {
+	$fn =~ s|.*/||;
+    }
+    if ($display_escaped) {
+	$fn = shell_escape($fn);
+    }
+    return $fn;
+}
+
+# format size with regard to $display_unit option.
+sub format_size($) {
+    my $size = shift;
+    if ($display_unit eq 'k') {
+	return sprintf '%.1f', $size / 1024;
+    }
+    elsif ($display_unit eq 'm') {
+	return sprintf '%.1f', $size / (1024*1024);
+    }
+    elsif ($display_unit eq 'h') {
+	if ($size >= 1024*1024) {
+	    return sprintf '%.1fM', $size / (1024*1024);
+	}
+	elsif ($size >= 1024) {
+	    return sprintf '%.1fK', $size / 1024;
+	}
+	else {
+	    return $size;
+	}
+    }
+    else {
+	return $size;
+    }
+}
+
+# return info about files opened by a process, taking $include_xxx
+# options into consideration.
+sub get_process_files($) {
+    my $pid = shift;
+    my @file_info = ();
+
+    # If process has died since it was discovered, don't show
+    # any files. Not an error.
+    chdir "/proc/$pid/fd" or return ();
+
+    my @files = <*>;
+    for my $file ( @files ) {
+	next unless -l $file;
+	my $target = readlink $file;
+	my $is_deleted = 0;
+
+	next if -d $file and not $include_directories;
+	next if -f _ and not $include_regular;
+	next if -p _ and not $include_pipes;
+	next if -S _ and not $include_sockets;
+	next if -b $target or -c _ and not $include_devices;
+	if ( ( -f $file or -d _ or -b _ or -c _ ) and not -e $target ) {
+	    next unless $include_deleted;
+	    $is_deleted = 1;
+	}
+	next if ( not ( -b $file or -c _ or -p _ or -S _ or -f _ ) ) and not $include_other;
+	next if not $is_deleted and $deleted_only;
+
+	# get extra info
+	my $pos = 0;
+	my $flags = '';
+	my $size = 0;
+	my $type = '';
+
+	if ($show_flags or $show_extra_flags or $show_pos) {
+	    ($pos, $flags) = get_file_info($pid, $file);
+	}
+
+	if ($show_type) {
+	    if (-d $file) {
+		$type = 'directory';
+	    }
+	    elsif (-f _) {
+		$type = 'file';
+	    }
+	    elsif (-p _) {
+		$type = 'pipe';
+	    }
+	    elsif (-S _) {
+		$type = 'socket';
+	    }
+	    elsif (-b _) {
+		$type = 'block-device';
+	    }
+	    elsif (-c _) {
+		$type = 'character-device';
+	    }
+	    else {
+		$type = 'special';
+	    }
+	}
+
+	$size = -s $target if $show_size;
+	$size = 0 unless defined $size;
+
+	# format file info
+	my %fields = (
+	    'pid'   => $pid,
+	    'fd'    => $file,
+	    'flags' => $flags,
+	    'file'  => $target,
+	    'size'  => $size,
+	    'pos'   => $pos,
+	    'type'  => $type,
+	);
+
+	push @file_info, \%fields;
+    }
+
+    return @file_info;
+}
+
+# format list of file according to command line options, 
+# return result as string.
+sub format_file_display(\@) {
+    my $file_info = shift;
+    my $output = '';
+
+    for my $file (@$file_info) {
+	my @fields = ();
+
+	for (my $i=0; $i<length $field_order; ++$i) {
+	    my $field = substr $field_order, $i, 1;
+	    if ($show_pid and $field eq 'p') {
+		push @fields, $file->{'pid'};
+	    }
+	    if ($show_process and $field eq 'n') {
+		push @fields, get_process_name($file->{'pid'}) ;
+	    }
+	    if ($show_fd and $field eq 'd') {
+		push @fields, $file->{'fd'};
+	    }
+	    if ($show_flags and $field eq 'l') {
+		push @fields, format_file_flags($file->{'flags'});
+	    }
+	    if ($show_extra_flags and $field eq 'x') {
+		push @fields, format_file_extra_flags($file->{'flags'});
+	    }
+	    if ($show_file and $field eq 'f') {
+		push @fields, format_file($file->{'file'});
+	    }
+	    if ($show_pos and $field eq 'h') {
+		push @fields, format_size($file->{'pos'});
+	    }
+	    if ($show_size and $field eq 's') {
+		push @fields, format_size($file->{'size'});
+	    }
+	    if ($show_type and $field eq 't') {
+		push @fields, $file->{'type'};
+	    }
+	    if ($show_link and $field eq 'k') {
+		push @fields, '/proc/' . $file->{'pid'} . '/fd/' . $file->{'fd'};
+	    }
+	}
+
+	if (length($display_format)) {
+	    $output .= sprintf $display_format, @fields;
+	    $output .= "\000" if $display_nul;
+	}
+	else {
+	    $output .= join(' ', @fields);
+	    $output .= $display_nul ? "\000" : "\n";
+	}
+    }
+
+    return $output;
+}
+
+# display all file info
+sub display_files(\@) {
+    print format_file_display(@{$_[0]});
+}
+
+#
+# COMMAND LINE
+#
+
+# process --types option
+
+sub process_types_option($$) {
+    my ($cmd, $arg) = @_;
+
+    # reset all options to disabled
+    $$_ = 0 for values %filetype_codes;
+
+    # and only set specified options
+    for (my $i=0; $i<length($arg); ++$i) {
+	my $c = substr($arg, $i, 1);
+	if (exists $filetype_codes{$c}) {
+	    ${$filetype_codes{$c}} = 1;
+	}
+	elsif (exists $filetype_codes{lc $c}) {
+	    ${$filetype_codes{$c}} = 0;
+	}
+	else {
+	    die "Unknown filetype code: \"$c\" in option \"--types\". Possible values are: "
+		. join('', keys %filetype_codes)
+		. ".";
+	}
+    }
+}
+
+# enable selected options
+sub process_include_types_option($$) {
+    my ($cmd, $arg) = @_;
+
+    for (my $i=0; $i<length($arg); ++$i) {
+	my $c = substr($arg, $i, 1);
+	if (exists $filetype_codes{$c}) {
+	    ${$filetype_codes{$c}} = 1;
+	}
+	else {
+	    die "Unknown filetype code: \"$c\" in option \"--include\". Possible values are: "
+		. join('', keys %filetype_codes)
+		. ".";
+	}
+    }
+}
+
+# disabled selected options
+sub process_exclude_types_option($$) {
+    my ($cmd, $arg) = @_;
+
+    for (my $i=0; $i<length($arg); ++$i) {
+	my $c = substr($arg, $i, 1);
+	if (exists $filetype_codes{$c}) {
+	    ${$filetype_codes{$c}} = 0;
+	}
+	else {
+	    die "Unknown filetype code: \"$c\" in option \"--exclude\". Possible values are: "
+		. join('', keys %filetype_codes)
+		. ".";
+	}
+    }
+}
+
+# enable all filetypes
+sub process_include_all_option($$) {
+    $$_ = 1 for values %filetype_codes;
+}
+
+# display all columns, except links unless explicitely asked for.
+sub process_show_all_option($$) {
+    my ($cmd, $arg) = @_;
+    my $save_show_link = $show_link;
+    $$_ = 1 for values %field_codes;
+    $show_link = $save_show_link;
+}
+
+# select which fields to display
+sub process_fields_option($$) {
+    my ($cmd, $arg) = @_;
+
+    $$_ = 0 for values %field_codes;
+    $field_order = '';
+    
+    for (my $i=0; $i<length($arg); ++$i) {
+	my $c = substr($arg, $i, 1);
+	if (exists $field_codes{$c}) {
+	    ${$field_codes{$c}} = 1;
+	    $field_order .= $c;
+	}
+	else {
+	    die "Unknown field code: \"$c\" in option \"--field\". Possible values are: "
+		. join('', keys %field_codes)
+		. ".";
+	}
+    }
+}
+
+# select unit to display sizes
+sub process_unit_option($$) {
+    my ($cmd, $arg) = @_;
+
+    $arg = lc $arg;
+    if ($arg =~ /^[bkmh]$/) {
+	$display_unit = $arg;
+    }
+    else {
+	die "Unknown unit: \"$arg\" in option \"--unit\". Possible values are bkmh.";
+    }
+}
+
+# test if --format is valid for specified fields
+sub check_format_config() {
+    # test data. a process with pid=1 always exists (init).
+    my %fields = (
+	'pid'   => 1,
+	'fd'    => 0,
+	'flags' => 0,
+	'file'  => 'test',
+	'size'  => 0,
+	'pos'   => 0,
+	'type'  => 'regular',
+    );
+
+    my @files = ( \%fields );
+
+    local $SIG{__WARN__} = sub { die $_[0]; };
+
+    eval {
+	format_file_display @files;
+    };
+
+    if ($@) {
+	print STDERR "Not enough selected fields (--fields) for output format, or invalid output format (--format) .\n";
+	exit -1;
+    }
+}
+
+#
+# SCRIPT ENTRY
+#
+
+#
+# Initalize settings
+#
+
+my %options = (
+    'help|h'		    => \&abort_with_help,
+    'children|c'    	    => \$recurse_into_processes,
+    'pid|p=i'	    	    => \$use_pid,
+    'ignore-case|i!' 	    => \$ignore_case,
+    'match-start|s!'	    => \$match_start,
+    'smart-match|m!' 	    => \$smart_match,
+    'types|t=s'		    => \&process_types_option,
+    'include|n=s'	    => \&process_include_types_option,
+    'exclude|x=s'	    => \&process_exclude_types_option,
+    'include-all|a'	    => \&process_include_all_option,
+    'include-directories!'  => \$include_directories,
+    'include-regular!'      => \$include_regular,
+    'include-devices!'      => \$include_devices,
+    'include-pipes!'	    => \$include_pipes,
+    'include-sockets!'      => \$include_sockets,
+    'include-deleted!'      => \$include_deleted,
+    'include-other!'	    => \$include_other,
+    'show-pid!'		    => \$show_pid,
+    'show-process!'	    => \$show_process,
+    'show-fd!'		    => \$show_fd,
+    'show-flags!'	    => \$show_flags,
+    'show-extra-flags!'	    => \$show_extra_flags,
+    'show-pos!'		    => \$show_pos,
+    'show-size!'	    => \$show_size,
+    'show-type!'	    => \$show_type,
+    'show-link!'	    => \$show_link,
+    'show-all'		    => \&process_show_all_option,
+    'fields|f=s'	    => \&process_fields_option,
+    'unit=s'		    => \&process_unit_option,
+    'escape!'		    => \$display_escaped,
+    'basename!'		    => \$display_basename,
+    'with-proc-tags'	    => \$display_proc_tags,
+    'without-proc-tags'     => sub { $display_proc_tags = 0 },
+    'format|o=s'	    => \$display_format,
+    'formatln|O=s'	    => sub { $display_format = $_[1] . "\n" },
+    'null|0'		    => \$display_nul,
+    'deleted-only'	    => \$deleted_only,
+);
+
+# override warning handler to hide file and line number info in warnings
+# generated by GetOptions, as they are not programming errors but user 
+# input errors.
+$SIG{__WARN__} = sub {
+    my $warning = shift;
+    $warning =~ s/\s*at\s+.*\s+line\s+\d+\.\s*$/\n/;
+    print STDERR $warning;
+};
+
+my $env_format = '';
+my $env_fields = 0;
+
+# load defaults from environment
+if (exists $ENV{&ENV_VAR}) {
+    if (!GetOptionsFromString($ENV{&ENV_VAR}, %options)) {
+	print STDERR "Environment variable \"" . ENV_VAR . "\" contains invalid options.\n";
+    }
+
+    # remember format and fields for later, so they can be compared
+    # to the command-line options.
+    $env_format = $display_format;
+    for my $field (keys %field_codes) {
+	$env_fields <<= 1;
+	$env_fields |= ${$field_codes{$field}};
+    }
+}
+
+# override with command line options
+if (!GetOptions(%options)) {
+    exit -1;
+}
+
+# restore warning handler. warning that appear from now on are programming
+# errors.
+$SIG{__WARN__} = 'DEFAULT';
+
+if (defined $use_pid and @ARGV) {
+    print STDERR "Option --pid and process names cannot be combined.\n";
+    exit -1;
+}
+
+# --delete-only option implies --include-deleted
+if ($deleted_only) {
+    $include_deleted = 1;
+}
+
+# if the commmand-line changes which fields are dislayed without updating
+# the display format (if present), ignore the display format set in the 
+# environment var as it doesn't match the selected fields.
+if ($env_format and $display_format eq $env_format) {
+    my $output_fields = 0;
+    for my $field (keys %field_codes) {
+	$output_fields <<= 1;
+	$output_fields |= ${$field_codes{$field}};
+    }
+
+    if ($output_fields != $env_fields) {
+	$display_format = '';
+    }
+}
+
+# check that --format matches --fields and alike
+check_format_config();
+
+# add fields that were added with --show-xxx after --fields, and do not appear
+# in $field_order.
+for (keys %field_codes) {
+    if (${$field_codes{$_}} and index($field_order, $_) < 0) {
+	$field_order .= $_;
+    }
+}
+
+
+#
+# Build process list
+#
+
+my $uid = get_uid();
+my @all_pids;
+my @selected_pids;
+
+if (defined $use_pid) {
+    # pid must be existing and referring to a process owned by the current 
+    # user.
+    check_pid($use_pid);
+    @selected_pids = ($use_pid);
+}
+else {
+    @all_pids = get_user_processes($uid);
+    @selected_pids = @ARGV
+	? get_matching_processes(@all_pids, @ARGV)
+	: @all_pids;
+}
+
+unless (@selected_pids) {
+    print STDERR "No matching processes.\n";
+    exit 1;
+}
+
+if ($recurse_into_processes) {
+    @all_pids = get_user_processes($uid)
+	unless @all_pids;
+    
+    my @children = ();
+
+    for my $pid (@selected_pids) {
+	push @children, get_process_descendants($pid, @all_pids)
+    }
+
+    push @selected_pids, @children;
+    my %selected_pids = map { $_ => 1 } @selected_pids;
+    @selected_pids = sort { $a <=> $b } keys %selected_pids;
+}
+
+#
+# Build and display a file listing
+#
+
+# Info is fetched for all files before output so the list can be sorted.
+# The disadvantage is that it takes more time before output is started and
+# uses more memory.
+
+my @files = ();
+
+for my $pid ( @selected_pids ) {
+    my @process_files = get_process_files($pid);
+    push @files, @process_files
+	if @process_files;
+}
+
+unless (@files) {
+    print STDERR "No files matched your criteria.\n";
+    exit 1;
+}
+
+# sort on pid, fd
+@files = sort { $a->{pid} <=> $b->{pid} || ${a}->{fd} <=> ${b}->{fd} } @files;
+
+display_files(@files);
+

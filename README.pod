@@ -1,0 +1,272 @@
+=head1 NAME
+
+of - List open files.
+
+=head1 SYNOPSIS
+
+    $of vim
+    10059 vim.gnome /home/stilgar/bin/.of.swp
+
+    $of --fields f evolution | grep "\.db$" | sort | uniq
+    /home/me/.evolution/mail/imap/my@mail.com/folders.db
+    /home/me/.evolution/mail/imap/more@mail.com@provider.net/folders.db
+    /home/me/.evolution/mail/local/folders.db
+    /home/me/.evolution/mail/vfolder/folders.db
+    /home/me/.pki/nssdb/cert9.db
+    /home/me/.pki/nssdb/key4.db
+
+    $of --type p --children --show-fd ogmrip
+    ...
+    2054 ogmrip 19 pipe:[15582]
+    2054 ogmrip 20 pipe:[15582]
+    2054 ogmrip 23 pipe:[912459]
+    2054 ogmrip 25 pipe:[912460]
+    16132 mencoder 1 pipe:[912459]
+    16132 mencoder 2 pipe:[912460]
+    $cat /proc/2054/23
+    Pos: 216.6s   5415f (45%) 31.04fps Trem:   3min  45mb  A-V:0.000 [803:0]
+
+    $export OF_RC=$'--unit h --fields pndlhsf 
+    --format "%5d %-15.15s %3d [%-3s] %-7s %-7s %s\n"'
+    $of gnome-session -c
+    ...
+    1670 gnome-panel       2 [RW+] 2.0K    2.0K    /home/stilgar/.xsession-e\
+    rrors
+    1678 nautilus          1 [RW+] 2.0K    2.0K    /home/stilgar/.xsession-e\
+    rrors
+    1678 nautilus          2 [RW+] 2.0K    2.0K    /home/stilgar/.xsession-e\
+    rrors
+    ...
+
+    $of -c firefox-bin --deleted-only --fields f --without-proc-tags
+    /tmp/FlashXXlQ6no
+    $of -c firefox-bin --deleted-only -f hk --unit m -O "Buffered %s Megabytes of %s"
+    Buffered 117.4 Megabytes of /proc/4110/fd/64
+    $of -c firefox-bin --deleted-only -f k -0 | xargs -0 mplayer
+    ...
+
+=head1 DESCRIPTION
+
+This script lists which file descriptors are opened by running processes and can display information about them.
+
+=head1 SELECTING PROCESSES
+
+=head2 Process Matching
+
+Any number of process names can be provided as arguments. If no process name is specified, B<of> will use all the processes belonging to the current user.
+
+The specified process names are matched against F</proc/pid/cmdline>, F</proc/pid/exe> and F</proc/pid/status>.
+
+At this time B<of> only shows descriptors that are opened by the user calling the command. Future versions will allow users with root privileges to use it on other users.
+
+=head2 Options
+
+=over
+
+=item
+B<--children>, B<-c>
+
+Recurse into the selected processes' descendance.
+
+=item
+B<--ignore-case>, B<-i>
+
+Ignore case in matching algorithm.
+
+=item
+B<--match-start>, B<-s>
+
+Match incomplete process name (ie. C<fire> matches C<firefox>)
+
+=item
+B<--smart-match>, B<-m>
+      
+Match the script file instead of interpreter for known script languages.
+
+=back
+
+
+=head1 SELECTING DESCRIPTORS
+
+A few options are provided to select which descriptors to display. By default only directories and regular files are be displayed.
+
+=over
+
+=item B<--types>, B<-t> [dfvpsxoDFVPSXO]
+
+Select which descriptors types to display (directories, regular files, devices, pipes, sockets, deleted, other special)
+
+=item B<--include>, B<-n> [dfvpsxo]
+
+Include these descriptor types. See B<--types> for the meaning of the arguments.
+
+=item B<--exclude>, B<-x> [dfvpsxo]
+
+Include or exclude file types. See B<--types> for the meaning of the arguments.
+
+=item B<--include-all>, B<-a>
+
+Display descriptors of any type.
+
+=item B<--deleted-only>
+
+Only display deleted entries. Implies B<--include x>.
+
+=item B<--[no-]include-directories>
+
+=item B<--[no-]include-regular>
+
+=item B<--[no-]include-devices>
+
+=item B<--[no-]include-pipes>
+
+=item B<--[no-]include-sockets>
+
+=item B<--[no-]include-deleted>
+
+=item B<--[no-]include-other>
+
+Select which descriptor types to display.
+
+=back
+
+
+=head1 OUTPUT FORMAT
+
+=head2 Fields
+
+Fields are displayed in command-line order.
+
+=over
+
+=item B<--[no-]show-pid>
+
+=item B<--[no-]show-process>
+
+=item B<--[no-]show-fd>
+
+=item B<--[no-]show-flags>
+
+=item B<--[no-]show-extra-flags>
+
+=item B<--[no-]show-pos>
+
+=item B<--[no-]show-size>
+
+=item B<--[no-]show-type>
+
+=item B<--[no-]show-link>
+
+Enable/disable fields to display.
+
+=item B<--show-all>
+
+Display all fields except the link in /proc.
+
+=item B<--fields>, B<-f> [pndlxfhsk]
+
+Choose which fields to display (pid, process name, fd, flags, extra flags, filename, seek position, size, link in /proc).
+
+=back
+
+
+=head2 Formatting
+
+=over
+
+=item B<--unit [bkmh]>
+
+Unit to use for sizes (bytes, kilobytes, megabytes, human)
+
+=item B<--[no-]escape>
+
+Shell escape filenames.
+
+=item B<--[no-]basename>
+
+Display basename instead of full filename.
+
+=item B<--with-proc-tags>
+=item B<--without-proc-tags>
+
+Deleted files have I<(deleted)> appended to their names by the F</proc> filesystem. By default this will be displayed as is. Use C<--without-proc-tags> to display the bare filename only. You will not be able to tell the difference between regular and deleted files any longer.
+
+=item B<--format>, B<-o> format_string
+
+sprintf style format string to display files. The "%" placeholders must match the selected fields (`--fields`) in number and in order.
+
+=item B<--formatln>, B<-O> format_string
+
+like --format, but appends a newline.
+
+=item B<--null|0>
+
+End lines with nul character instead of a newline. This is useful in combination with `xargs -0` to safely iterate over filenames that may contain weird characters.
+
+=back
+
+=head1 OTHER INFORMATION
+
+=over
+
+=item B<--help>, B<-h>
+
+Display a useful help message.
+
+=item B<--version>, B<V>
+
+Display the current version and quit.
+
+=back
+
+=head1 ENVIRONMENT
+
+    $export DU=--format "%5d %-25s %s" --fields pnf
+
+=head1 BUGS
+
+Hit me!
+
+=head1 IDEAS
+
+=over
+
+=item * custom sort
+
+=item * make output lines unique. useful with -f f -0 to get a nul separated list
+   of open files.
+
+=item * --format option is weird, it should not use the specified fields and their
+   order but allow a syntax like --format="%{pid}-3d %{process}s, and autoselect
+   the fields that are needed.
+
+=item * allow to select processes belong to other user for system maintenance.
+
+=item * display header
+
+=item * display more pertinent info about sockets
+
+=item * better detection of script files
+
+=item * be smarter about the display process name, try
+
+=item * to match the launched command rather than the canonical name.
+   ie. gvim instead of vim.gnome
+
+=item * add option to specify which process name matching method(s) are used.
+
+=item * filter: show only files open for reading / writing
+
+=back
+
+=head1 AUTHOR
+
+This module by Martijn van der Kwast <martijn@vdkwast.com>.
+
+=head1 COPYRIGHT
+
+This module is copyright (c) 2011-2013 Martijn van der Kwast <martijn@vdkwast.com>. All rights reserved.
+
+This script is free software; you may redistribute and/or modify it under the same terms as Perl itself.
+
+=cut
