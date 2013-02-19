@@ -236,7 +236,7 @@ Display the current version and quit.
 
 =head1 ENVIRONMENT
 
-    $export DU=--format "%5d %-25s %s" --fields pnf
+    $export OF_RC=--format "%5d %-25s %s" --fields pnf
 
 =head1 BUGS
 
